@@ -14,6 +14,10 @@ class ExampleTest extends TestCase
     {
         $response = $this->get('/');
 
+<<<<<<< HEAD
         $response->assertStatus(200);
+=======
+        $response->assertRedirect('/dashboard');
+>>>>>>> cd7ddb7 (chore: initialize laravel project with breeze livewire stack)
     }
 }
