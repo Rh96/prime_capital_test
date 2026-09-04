@@ -13,6 +13,12 @@
 
         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
             <div class="p-6 text-gray-900">
+                <livewire:record-movement :client="$client" :key="'record-movement-'.$client->id" />
+            </div>
+        </div>
+
+        <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+            <div class="p-6 text-gray-900">
                 <h3 class="font-semibold text-lg mb-4">{{ __('Holdings') }}</h3>
 
                 <table class="w-full text-left">
