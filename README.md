@@ -1,69 +1,298 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Investment ledger
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Append-only cash and holdings ledger. Staff operate it from a Livewire UI; integrations use the REST API. Both go through `LedgerService`.
 
-## Seeded staff login
+Requires PHP 8.3+ and **MySQL 8.0.16+** (`CHECK` constraints are ignored on 5.7 and MariaDB — confirm with `SELECT VERSION();`).
 
-After `php artisan migrate --seed`:
+## Setup
+
+```bash
+git clone <this-repo>
+cd <this-repo>
+composer install
+npm install && npm run build
+cp .env.example .env
+php artisan key:generate
+```
+
+Point `.env` at local MySQL (the example file is Sail-oriented):
+
+```
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=investment_ledger
+DB_USERNAME=root
+DB_PASSWORD=
+```
+
+Create both databases:
+
+```sql
+CREATE DATABASE investment_ledger CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE investment_ledger_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+`phpunit.xml` already uses `investment_ledger_test`. Then:
+
+```bash
+php artisan migrate --seed
+php artisan serve
+```
+
+Open http://localhost:8000 and sign in:
 
 - Email: `staff@example.com`
 - Password: `password`
 
-## Livewire and API
-
-Two entry points, one service, zero duplicated business logic. The Livewire movement form and the REST API both call `LedgerService`.
-
-## About Laravel
-
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
-
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
-
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+You should see Ana, Boris, Elena, and Ivana. Ana is the spec example: 860 cash, 2 AAPL.
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+php artisan test
+php artisan ledger:verify
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+### Sail
 
-## Contributing
+If you would rather not install PHP/MySQL on the host, keep `DB_HOST=mysql` and `DB_DATABASE=laravel` from `.env.example`, then:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```bash
+./vendor/bin/sail up -d
+./vendor/bin/sail artisan migrate --seed
+```
 
-## Code of Conduct
+Create `investment_ledger_test` inside the MySQL container and grant the `sail` user access to it before `./vendor/bin/sail test`. The app is on http://localhost:8000 when `APP_PORT=8000`.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## API
 
-## Security Vulnerabilities
+No auth. After seed, Ana is client `1`. Amounts are decimal strings. Buy/sell totals are computed server-side as `quantity × unit_price` — do not send `amount` on a trade.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+The GET and 422 examples below are copy-pasteable on a fresh seed. The three 201 bodies are Ana's seeded rows (same numbers as GET history). Do not POST them again on `/clients/1` after seed — that would add extra rows.
 
-## License
+### Record a movement
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+`POST /api/clients/{client}/transactions`
+
+Deposit (this is how Ana's first row was written):
+
+```bash
+curl -X POST http://localhost:8000/api/clients/1/transactions \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"deposit","amount":"1000"}'
+```
+
+```json
+{
+  "data": {
+    "id": 1,
+    "client_id": 1,
+    "type": "deposit",
+    "amount": "1000.0000",
+    "symbol": null,
+    "quantity": null,
+    "unit_price": null,
+    "cash_balance_after": "1000.0000",
+    "created_at": "2026-09-04T19:32:36.000000Z"
+  }
+}
+```
+
+Buy:
+
+```bash
+curl -X POST http://localhost:8000/api/clients/1/transactions \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"buy","symbol":"AAPL","quantity":5,"unit_price":"100"}'
+```
+
+```json
+{
+  "data": {
+    "id": 2,
+    "client_id": 1,
+    "type": "buy",
+    "amount": "500.0000",
+    "symbol": "AAPL",
+    "quantity": 5,
+    "unit_price": "100.0000",
+    "cash_balance_after": "500.0000",
+    "created_at": "2026-09-04T19:32:36.000000Z"
+  }
+}
+```
+
+Sell:
+
+```bash
+curl -X POST http://localhost:8000/api/clients/1/transactions \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"sell","symbol":"AAPL","quantity":3,"unit_price":"120"}'
+```
+
+```json
+{
+  "data": {
+    "id": 3,
+    "client_id": 1,
+    "type": "sell",
+    "amount": "360.0000",
+    "symbol": "AAPL",
+    "quantity": 3,
+    "unit_price": "120.0000",
+    "cash_balance_after": "860.0000",
+    "created_at": "2026-09-04T19:32:36.000000Z"
+  }
+}
+```
+
+### Cash
+
+```bash
+curl http://localhost:8000/api/clients/1/cash -H 'Accept: application/json'
+```
+
+```json
+{
+  "data": {
+    "client_id": 1,
+    "cash_balance": "860.0000"
+  }
+}
+```
+
+### Holdings
+
+```bash
+curl http://localhost:8000/api/clients/1/holdings -H 'Accept: application/json'
+```
+
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "client_id": 1,
+      "symbol": "AAPL",
+      "quantity": 2
+    }
+  ]
+}
+```
+
+### Transaction history
+
+Paginated.
+
+```bash
+curl http://localhost:8000/api/clients/1/transactions -H 'Accept: application/json'
+```
+
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "client_id": 1,
+      "type": "deposit",
+      "amount": "1000.0000",
+      "symbol": null,
+      "quantity": null,
+      "unit_price": null,
+      "cash_balance_after": "1000.0000",
+      "created_at": "2026-09-04T19:32:36.000000Z"
+    },
+    {
+      "id": 2,
+      "client_id": 1,
+      "type": "buy",
+      "amount": "500.0000",
+      "symbol": "AAPL",
+      "quantity": 5,
+      "unit_price": "100.0000",
+      "cash_balance_after": "500.0000",
+      "created_at": "2026-09-04T19:32:36.000000Z"
+    },
+    {
+      "id": 3,
+      "client_id": 1,
+      "type": "sell",
+      "amount": "360.0000",
+      "symbol": "AAPL",
+      "quantity": 3,
+      "unit_price": "120.0000",
+      "cash_balance_after": "860.0000",
+      "created_at": "2026-09-04T19:32:36.000000Z"
+    }
+  ],
+  "links": {
+    "first": "http://127.0.0.1:8000/api/clients/1/transactions?page=1",
+    "last": "http://127.0.0.1:8000/api/clients/1/transactions?page=1",
+    "prev": null,
+    "next": null
+  },
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 1,
+    "path": "http://127.0.0.1:8000/api/clients/1/transactions",
+    "per_page": 15,
+    "to": 3,
+    "total": 3
+  }
+}
+```
+
+### Rejection (overdraft)
+
+```bash
+curl -X POST http://localhost:8000/api/clients/1/transactions \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"withdraw","amount":"9999"}'
+```
+
+HTTP 422. Ana's cash stays `860.0000`.
+
+```json
+{
+  "code": "insufficient_funds",
+  "message": "Insufficient funds: available 860.0000, requested 9999."
+}
+```
+
+A malformed payload is also 422, from validation rather than the domain:
+
+```bash
+curl -X POST http://localhost:8000/api/clients/1/transactions \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"deposit","amount":"1000","symbol":"AAPL"}'
+```
+
+```json
+{
+  "message": "Deposits and withdrawals cannot include a symbol.",
+  "errors": {
+    "symbol": ["Deposits and withdrawals cannot include a symbol."]
+  }
+}
+```
+
+Overselling (safe to run on Ana after seed):
+
+```bash
+curl -X POST http://localhost:8000/api/clients/1/transactions \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"sell","symbol":"AAPL","quantity":8,"unit_price":"100"}'
+```
+
+```json
+{
+  "code": "insufficient_shares",
+  "message": "Insufficient shares of AAPL: held 2, requested 8."
+}
+```
