@@ -1,5 +1,7 @@
 <?php
 
+use App\Exceptions\InsufficientFundsException;
+use App\Exceptions\InsufficientSharesException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -19,4 +21,18 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+
+        $exceptions->render(function (InsufficientFundsException $e) {
+            return response()->json([
+                'code' => 'insufficient_funds',
+                'message' => $e->getMessage(),
+            ], 422);
+        });
+
+        $exceptions->render(function (InsufficientSharesException $e) {
+            return response()->json([
+                'code' => 'insufficient_shares',
+                'message' => $e->getMessage(),
+            ], 422);
+        });
     })->create();
